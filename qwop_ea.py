@@ -5,7 +5,7 @@ Evolves 60-second Q/W/O/P input sequences for the pymunk/pyglet QWOP clone.
 Put this file in the repo root (next to character.py, game_class.py, assets/).
     python qwop_ea.py train            # run the EA headless (fast, multi-core)
     python qwop_ea.py play             # open the game window, press S to auto-play the best runner
-    python qwop_ea.py baseline         # random-search baseline (for the "results" slide)
+    python qwop_ea.py baseline         # random-search baseline
 --------------------------------------
   Genotype  : (N, 4) bit array, N = MAX_TIME / DT; each row = [Q, W, O, P]     -> random_genome()
   Phenotype : the timed key presses replayed in the game                       -> simulate() / AutoPlayGame
@@ -29,7 +29,7 @@ import numpy as np
 # Settings (everything user may want to tune lives here)
 # =====================================================================
 # ---- Encoding -------------------------------------------------------
-# seconds each 4-bit input is held (slide: N = T / dt)
+# seconds each 4-bit input is held
 DT = 0.1     
 # seconds per run                      
 MAX_TIME = 60.0
