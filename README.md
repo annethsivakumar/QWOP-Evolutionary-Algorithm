@@ -18,5 +18,8 @@ To build and install
 ```
 git clone <this repository>
 cd QWOP
-python3 qwop.py
+python3 qwop_ea.py test
+python3 qwop_ea.py train
+python3 qwop_ea.py play
+python3 qwop_ea.py baseline
 ```
