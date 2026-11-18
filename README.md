@@ -181,20 +181,20 @@ The viewer initially selects the best saved controller. It displays scored dista
 
 ```text
 QWOP/
-├── qwop_ea.py                  # Evolutionary algorithm and replay viewer
-├── qwop.py                     # Original interactive QWOP game
-├── game_class.py               # Game environment and rendering
-├── character.py                # Runner physics and movement
-├── generate_samples.py        # Script for generating sample runs
-├── play_scripted_sequence.py   # Scripted gameplay
-├── assets/                    # Game sprites and original demo GIF
-├── examples/                  # Physics and graphics examples
-└── ea_output/                 # Generated experiment outputs
-    ├── best_genome.npy         # Best saved controller
-    ├── best_per_generation.npz # Best controller from each generation
-    ├── fitness_log.csv         # Per-generation performance metrics
+├── qwop_ea.py                          # Evolutionary algorithm and replay viewer
+├── qwop.py                             # Original interactive QWOP game
+├── game_class.py                       # Game environment and rendering
+├── character.py                        # Runner physics and movement
+├── generate_samples.py                 # Script for generating sample runs
+├── play_scripted_sequence.py           # Scripted gameplay
+├── assets/                             # Game sprites and original demo GIF
+├── examples/                           # Physics and graphics examples
+└── ea_output/                          # Generated experiment outputs
+    ├── best_genome.npy                 # Best saved controller
+    ├── best_per_generation.npz         # Best controller from each generation
+    ├── fitness_log.csv                 # Per-generation performance metrics
     ├── fitness_vs_generation.png
-    └── videos/                 # Recorded gameplay (MP4)
+    └── videos/                         # Recorded gameplay (MP4)
 ```
 
 ## Acknowledgements
