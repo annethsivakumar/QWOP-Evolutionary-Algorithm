@@ -199,4 +199,4 @@ QWOP/
 
 ## Acknowledgements
 
-This project builds on the original Python QWOP clone and the game [QWOP](http://www.foddy.net/Athletics.html). The evolutionary controller, fitness evaluation, parallel training, performance tracking and automated replay extend the existing game environment for the CISC 455 course project.
+This project builds on the original Python QWOP clone and the game [QWOP](http://www.foddy.net/Athletics.html). The evolutionary controller, fitness evaluation, parallel training, performance tracking and automated replay extend the existing game environment for the CISC455 course project.
