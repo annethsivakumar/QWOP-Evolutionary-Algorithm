@@ -143,28 +143,6 @@ For an independent experiment starting from a random population, back up or rena
 
 The default random-search baseline evaluates 250,500 genomes, matching the default training loop's 500 individuals across generation 0 and 500 subsequent generations. Changing the training budget requires adjusting the baseline sample budget in the code for a fair comparison.
 
-## Results
-
-The included training log demonstrates that the EA successfully achieved the project objective of completing 100 metres within 60 seconds.
-
-| Metric | Recorded result |
-| --- | ---: |
-| Initial best distance | 7.29 m |
-| First successful generation | 478 |
-| Best-fitness controller distance | 100.08 m |
-| Best completion time | 18.21 s |
-| Best fitness | 141.79 |
-| Successful individuals in generation 500 | 62 / 500 |
-| Total population evaluations | 250,500 |
-
-The best fitness was first recorded at generation 491 and retained through generation 500. These values describe the experiment saved in `ea_output/fitness_log.csv`; results from other runs may vary.
-
-### Training performance
-
-![Training fitness and distance](ea_output/fitness_vs_generation.png)
-
-[Watch the recorded best-controller replay](ea_output/videos/qwop_BEST_EVER_20261117_221044.mp4)
-
 ## Replay controls
 
 | Key | Action |
