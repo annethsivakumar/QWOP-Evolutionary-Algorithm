@@ -4,7 +4,7 @@ An evolutionary algorithm (EA) that learns to play QWOP by evolving sequences of
 
 ## Overview
 
-This project extends a Python 3 clone of [QWOP](http://www.foddy.net/Athletics.html) written using [Pymunk](http://www.pymunk.org/en/latest/index.html#) and [Pyglet](https://pyglet.readthedocs.io/en/latest/index.html). Sprites were made with [Inkscape](https://inkscape.org/).
+This project extends a Python 3 clone of [QWOP](http://www.foddy.net/Athletics.html). This [python port](https://github.com/alinen/qwop) is written using [Pymunk](http://www.pymunk.org/en/latest/index.html#) and [Pyglet](https://pyglet.readthedocs.io/en/latest/index.html). Sprites were made with [Inkscape](https://inkscape.org/).
 
 ![Original QWOP demo](assets/qwop.gif)
 
@@ -15,11 +15,9 @@ Rather than manually controlling the runner, the EA evolves timed combinations o
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/annethsivakumar/QWOP-Evolutionary-Algorithm.git
 cd QWOP
 ```
-
-Replace `<repository-url>` with the URL of this repository.
 
 ### 2. Install dependencies
 
@@ -163,10 +161,7 @@ QWOP/
 ├── qwop.py                             # Original interactive QWOP game
 ├── game_class.py                       # Game environment and rendering
 ├── character.py                        # Runner physics and movement
-├── generate_samples.py                 # Script for generating sample runs
-├── play_scripted_sequence.py           # Scripted gameplay
 ├── assets/                             # Game sprites and original demo GIF
-├── examples/                           # Physics and graphics examples
 └── ea_output/                          # Generated experiment outputs
     ├── best_genome.npy                 # Best saved controller
     ├── best_per_generation.npz         # Best controller from each generation
@@ -177,4 +172,4 @@ QWOP/
 
 ## Acknowledgements
 
-This project builds on the original Python QWOP clone and the game [QWOP](http://www.foddy.net/Athletics.html). The evolutionary controller, fitness evaluation, parallel training, performance tracking and automated replay extend the existing game environment for the CISC455 course project.
+This project builds on the original [Python QWOP clone](https://github.com/annethsivakumar/QWOP-Evolutionary-Algorithm.git) of the [QWOP](http://www.foddy.net/Athletics.html) game. The evolutionary controller, fitness evaluation, parallel training, performance tracking and automated replay extend the existing game environment for the CISC455 course project.
