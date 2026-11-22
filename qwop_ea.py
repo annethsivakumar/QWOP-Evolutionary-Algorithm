@@ -5,7 +5,7 @@ Evolves 60-second Q/W/O/P input sequences for the pymunk/pyglet QWOP clone.
 Put this file in the repo root (next to character.py, game_class.py, assets/).
     python qwop_ea.py train            # run the EA headless (fast, multi-core)
     python qwop_ea.py play             # open the game window, press S to auto-play the best runner
-    python qwop_ea.py baseline         # random-search baseline
+    python qwop_ea.py baseline         # random-search baseline (for the "results" slide)
 --------------------------------------
   Genotype  : (N, 4) bit array, N = MAX_TIME / DT; each row = [Q, W, O, P]     -> random_genome()
   Phenotype : the timed key presses replayed in the game                       -> simulate() / AutoPlayGame
@@ -18,6 +18,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -29,7 +30,7 @@ import numpy as np
 # Settings (everything user may want to tune lives here)
 # =====================================================================
 # ---- Encoding -------------------------------------------------------
-# seconds each 4-bit input is held
+# seconds each 4-bit input is held (slide: N = T / dt)
 DT = 0.1     
 # seconds per run                      
 MAX_TIME = 60.0
@@ -45,6 +46,15 @@ SUBSTEP_DT = 1 / 50 / 10 / 2
 TICKS_PER_STEP = int(round(DT / TICK))
 # default pyglet window width -> start x = WORLD_W // 2
 WORLD_W = 640
+# Horizontal start position of the runner in pixels (added to WORLD_W // 2). A different
+# offset changes the floating-point numerics slightly, and a long evolutionary run can
+# branch onto a different path because of it (780 stalled at 46 m with seed 16). 0 repeats
+# the earlier 100 m run exactly.
+START_X_OFFSET = 0
+# How far ahead of the runner's starting position (in pixels) the start line is drawn in the
+# `play` window. This only moves the picture; it does not affect the physics or the score.
+# 200 px puts the line just in front of the front foot (the toe sticks out about 160 px).
+START_LINE_OFFSET_PX = 200
 # the game's "meters" conversion               
 PX_TO_M = 1.25 / 200     
 GOAL_M = 100.0
@@ -95,6 +105,12 @@ ACTIVE_MARGIN = 10
 SEED = 16                 
 # fraction of every new generation replaced by brand-new random runners (keeps diversity)
 IMMIGRANT_FRACTION = 0.25
+# Start generation 0 from ea_output/best_genome.npy of an OLDER run? Leave False for a
+# genuine from-scratch run (a saved genome drags the whole population into its lineage).
+WARM_START = False
+# Independent runs (seeds SEED, SEED+1, ...) for `train`; the best run is kept. Long
+# evolutionary runs are luck-dependent, so several seeds are more reliable than one.
+RUNS = 1
 WORKERS = max(1, cpu_count() - 1)
 
 # ---- Files ----------------------------------------------------------
@@ -272,7 +288,7 @@ def _build_headless_world(render=False):
     space.add(floor)
 
     body_w, body_h = 100, 200
-    body_x = WORLD_W // 2
+    body_x = WORLD_W // 2 + START_X_OFFSET
     body_y = floor_height + body_h + body_h / 8 + 10
 
     # Character.__init__ loads sprites through character.load_sprite, which needs an
@@ -588,7 +604,7 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
     # 1. Initialise
     pop = [random_genome(rng) for _ in range(pop_size)]
 
-    if os.path.exists(BEST_FILE):
+    if WARM_START and os.path.exists(BEST_FILE):
         best_genome = np.load(BEST_FILE)
 
         if best_genome.shape == (N_STEPS, 4):
@@ -609,7 +625,7 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
         else:
             print("Genome shape mismatch!")
     else:
-        print("No previous genome found. Starting from scratch.")
+        print("Starting from scratch (WARM_START is off or no saved genome).")
 
     pool = Pool(workers) if (workers and workers > 1) else None
     log_rows = []
@@ -793,6 +809,7 @@ def make_viewer_class():
     import pyglet
     from pyglet.window import key
     from game_class import Game           
+    from pyglet import shapes
 
     class AutoPlayGame(Game):
         """
@@ -844,6 +861,11 @@ def make_viewer_class():
             self.score_label = pyglet.text.Label(
                 "", font_size=14, x=10, y=self.window.height - 45,
                 anchor_x="left", anchor_y="center")
+            # Use the exact same simulation initialization before S and after S.
+            # This prevents a visible position jump when playback begins.
+            self.simulation = simulation_ticks(self.genomes[self.which], render=True)
+            self.space, self.character, _ = next(self.simulation)
+            self.x0 = progress_x(self.character)
             self.show_idle_message()
             pyglet.clock.schedule_interval(self.update, TICK)
 
@@ -1056,6 +1078,59 @@ def make_viewer_class():
                 self.begin_tail()
             return False
 
+        def draw_start(self):
+            """
+            Draw the start line where the runner actually starts.
+            
+            The original Game draws it at a fixed world position (half the window width), which
+            is not where the headless-style world places the runner. Here the line is drawn at
+            the runner's starting x plus START_LINE_OFFSET_PX, so the runner starts just behind it.
+            
+            Parameters:
+                None.
+            
+            Returns:
+                list[pyglet.shapes.Polygon]: Start-line shapes for the batch.
+            """
+            x = self.x0 + START_LINE_OFFSET_PX
+            h = self.window.height
+
+            w1 = 25
+            w2 = 10
+
+            line1 = (
+                (x - w1, 10 / h),
+                (x, 10 / h),
+                (x, h * 0.28),
+                (x - w2, h * 0.28),
+            )
+
+            line2 = (
+                (x, 10 / h),
+                (x + w1, 10 / h),
+                (x + w2, h * 0.28),
+                (x, h * 0.28),
+            )
+
+            color1 = (
+                255, 255, 255, 50,
+                255, 255, 255, 255,
+                255, 255, 255, 255,
+                255, 255, 255, 50,
+            )
+
+            color2 = (
+                255, 255, 255, 255,
+                255, 255, 255, 50,
+                255, 255, 255, 50,
+                255, 255, 255, 255,
+            )
+
+            return [
+                shapes.Polygon(*line1, color=color1, batch=self.batch),
+                shapes.Polygon(*line2, color=color2, batch=self.batch),
+            ]
+
         def on_draw(self):
             """
             Draw the game, status text, and active key indicators.
@@ -1177,6 +1252,50 @@ def run_play(record=True):
 # =====================================================================
 # CLI
 # =====================================================================
+def run_training(generations, pop_size, workers, seed, runs):
+    """
+    Run one or more independent EA runs and keep the best one.
+    
+    Parameters:
+        generations (int): Number of generations per run.
+        pop_size (int): Population size.
+        workers (int): Number of parallel workers.
+        seed (int | None): Seed of the first run; later runs use seed + 1, seed + 2, ...
+        runs (int): Number of independent runs.
+    
+    Returns:
+        None.
+    """
+    os.makedirs(OUT_DIR, exist_ok=True)
+    summary = []
+    best_overall = None
+    for k in range(runs):
+        run_seed = None if seed is None else seed + k
+        run_dir = OUT_DIR if runs == 1 else os.path.join(OUT_DIR, f"run_{k + 1}")
+        if runs > 1:
+            print(f"\n=== run {k + 1}/{runs} (seed {run_seed}) -> {run_dir} ===", flush=True)
+        best, _ = run_ea(generations, pop_size, workers, run_seed, out_dir=run_dir)
+        summary.append((k + 1, run_seed, best[0], best[2]["distance"], best[2]["finished"]))
+        if best_overall is None or best[0] > best_overall[0]:
+            best_overall = (best[0], run_dir, best)
+
+    if runs > 1:
+        # copy the winning run's files up one level so `play` finds them
+        for name in (BEST_FILE, HISTORY_FILE, LOG_FILE, PLOT_FILE):
+            src = os.path.join(best_overall[1], os.path.basename(name))
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(OUT_DIR, os.path.basename(name)))
+        print("\nRun summary:")
+        for k, run_seed, fit, dist, fin in summary:
+            print(f"  run {k} (seed {run_seed}): best distance {dist:.2f} m, finished: {fin}")
+        print(f"Best run: {best_overall[1]}")
+
+    res = best_overall[2][2]
+    print(f"\nBest fitness {best_overall[0]:.2f} | distance {res['distance']:.2f} m | "
+          f"finished: {res['finished']}")
+    print(f"Saved {BEST_FILE}. Now run:  python qwop_ea.py play   (then press S)")
+
+
 def main():
     """
     Parse command-line options and run the selected QWOP mode.
@@ -1195,15 +1314,12 @@ def main():
     ap.add_argument("--pop", type=int, default=POP_SIZE)
     ap.add_argument("--workers", type=int, default=WORKERS)
     ap.add_argument("--seed", type=int, default=SEED)
+    ap.add_argument("--runs", type=int, default=RUNS, help="train: number of independent runs")
     ap.add_argument("--no-record", action="store_true", help="play: do not save an MP4")
     args = ap.parse_args()
 
     if args.mode == "train":
-        best, _ = run_ea(args.generations, args.pop, args.workers, args.seed)
-        res = best[2]
-        print(f"\nBest fitness {best[0]:.2f} | distance {res['distance']:.2f} m | "
-              f"finished: {res['finished']}")
-        print(f"Saved {BEST_FILE}. Now run:  python qwop_ea.py play   (then press S)")
+        run_training(args.generations, args.pop, args.workers, args.seed, args.runs)
     elif args.mode == "play":
         run_play(record=not args.no_record)
     elif args.mode == "baseline":

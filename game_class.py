@@ -221,7 +221,7 @@ class Game:
         body_width = 100
         body_height = 200
 
-        body_x = self.window.width // 2
+        body_x = self.window.width // 2 + 780
         body_y = (
             floor_height
             + body_height
@@ -310,7 +310,7 @@ class Game:
         return objs
 
     def draw_start(self):
-        x = self.window.width / 2
+        x = self.window.width / 2 + 5  
         h = self.window.height
 
         w1 = 25
