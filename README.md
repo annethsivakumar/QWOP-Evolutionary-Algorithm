@@ -161,8 +161,6 @@ QWOP/
 ├── qwop.py                             # Original interactive QWOP game
 ├── game_class.py                       # Game environment and rendering
 ├── character.py                        # Runner physics and movement
-├── generate_samples.py                 # Script for generating sample runs
-├── play_scripted_sequence.py           # Scripted gameplay
 ├── assets/                             # Game sprites and original demo GIF
 └── ea_output/                          # Generated experiment outputs
     ├── best_genome.npy                 # Best saved controller
