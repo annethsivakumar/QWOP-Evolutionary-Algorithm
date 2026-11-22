@@ -7,7 +7,8 @@ Put this file in the repo root (next to character.py, game_class.py, assets/).
     python qwop_ea.py play             # open the game window, press S to auto-play the best runner
     python qwop_ea.py baseline         # random-search baseline (for the "results" slide)
 --------------------------------------
-  Genotype  : (N, 4) bit array, N = MAX_TIME / DT; each row = [Q, W, O, P]     -> random_genome()
+  Genotype  : one bitset of N * 4 bits (a Python int), N = MAX_TIME / DT; step i uses
+              bits 4i..4i+3 = [Q, W, O, P]                                     -> random_genome()
   Phenotype : the timed key presses replayed in the game                       -> simulate() / AutoPlayGame
   Fitness   : < 100 m maximise distance; >= 100 m minimise finish time         -> fitness_from_result()
   EA loop   : initialise -> evaluate -> select -> vary -> replace              -> run_ea()
@@ -324,24 +325,135 @@ def progress_x(char):
     return char.get_position()[0]
 
 
+# =====================================================================
+# Bitset genome
+# =====================================================================
+# A genome is ONE Python integer used as a bitset of N_STEPS * 4 bits.
+# Step i occupies bits 4i .. 4i+3:  bit 4i = Q, 4i+1 = W, 4i+2 = O, 4i+3 = P.
+# Setting a bit means "key held during that step".
+GENOME_BITS = N_STEPS * 4
+GENOME_BYTES = (GENOME_BITS + 7) // 8
+
+
+def step_keys(g, i):
+    """
+    Read the four key bits of one step from the genome bitset.
+    
+    Parameters:
+        g (int): Genome bitset.
+        i (int): Step index.
+    
+    Returns:
+        int: Four-bit mask (bit 0 = Q, bit 1 = W, bit 2 = O, bit 3 = P).
+    """
+    return (g >> (4 * i)) & 0xF
+
+
+def set_step_keys(g, i, keys):
+    """
+    Overwrite the four key bits of one step.
+    
+    Parameters:
+        g (int): Genome bitset.
+        i (int): Step index.
+        keys (int): New four-bit mask for the step.
+    
+    Returns:
+        int: New genome bitset.
+    """
+    return (g & ~(0xF << (4 * i))) | ((keys & 0xF) << (4 * i))
+
+
+def array_to_genome(arr):
+    """
+    Pack an (N_STEPS, 4) array of 0/1 key values into a bitset genome.
+    
+    Parameters:
+        arr (np.ndarray): Binary array with one row [Q, W, O, P] per step.
+    
+    Returns:
+        int: Genome bitset.
+    """
+    bits = np.asarray(arr, dtype=np.uint8).reshape(-1)
+    return int.from_bytes(np.packbits(bits, bitorder="little").tobytes(), "little")
+
+
+def genome_to_array(g):
+    """
+    Unpack a bitset genome into an (N_STEPS, 4) array of 0/1 key values.
+    
+    Parameters:
+        g (int): Genome bitset.
+    
+    Returns:
+        np.ndarray: Binary array with one row [Q, W, O, P] per step.
+    """
+    raw = np.frombuffer(g.to_bytes(GENOME_BYTES, "little"), dtype=np.uint8)
+    return np.unpackbits(raw, bitorder="little")[:GENOME_BITS].reshape(N_STEPS, 4)
+
+
+def genome_to_bytes_array(g):
+    """
+    Convert a bitset genome to a compact uint8 array for saving with NumPy.
+    
+    Parameters:
+        g (int): Genome bitset.
+    
+    Returns:
+        np.ndarray: Array of GENOME_BYTES bytes.
+    """
+    return np.frombuffer(g.to_bytes(GENOME_BYTES, "little"), dtype=np.uint8).copy()
+
+
+def genome_from_saved(arr):
+    """
+    Rebuild a genome from a saved array, accepting the old and the new file format.
+    
+    Parameters:
+        arr (np.ndarray): Either an old (N_STEPS, 4) binary array or GENOME_BYTES packed bytes.
+    
+    Returns:
+        int | None: Genome bitset, or None if the shape does not match this configuration.
+    """
+    arr = np.asarray(arr)
+    if arr.shape == (N_STEPS, 4):
+        return array_to_genome(arr)
+    if arr.shape == (GENOME_BYTES,):
+        return int.from_bytes(arr.astype(np.uint8).tobytes(), "little")
+    return None
+
+
+def load_genome(path):
+    """
+    Load one saved genome file.
+    
+    Parameters:
+        path (str): Path to a .npy genome file.
+    
+    Returns:
+        int | None: Genome bitset, or None if the file does not fit this configuration.
+    """
+    return genome_from_saved(np.load(path))
+
+
 def apply_keys(char, keys):
     """
-    Apply the Q, W, O, and P movements indicated by four bits.
+    Apply the Q, W, O, and P movements indicated by a four-bit mask.
     
     Parameters:
         char (Character): Runner to control.
-        keys (np.ndarray): Four binary keyboard inputs.
+        keys (int): Four-bit mask (bit 0 = Q, bit 1 = W, bit 2 = O, bit 3 = P).
 
     Returns:
         None.
     """
-    if keys[0]:
+    if keys & 1:
         char.move_thighL()
-    if keys[1]:
+    if keys & 2:
         char.move_thighR()
-    if keys[2]:
+    if keys & 4:
         char.move_calfL()
-    if keys[3]:
+    if keys & 8:
         char.move_calfR()
 
 
@@ -375,8 +487,8 @@ def simulation_ticks(genome, render=False):
     yield space, char, None
 
     for tick in range(max_ticks):
-        step_idx = min(tick // TICKS_PER_STEP, len(genome) - 1)
-        apply_keys(char, genome[step_idx])
+        step_idx = min(tick // TICKS_PER_STEP, N_STEPS - 1)
+        apply_keys(char, step_keys(genome, step_idx))
         for _ in range(SUBSTEPS):
             space.step(SUBSTEP_DT)
 
@@ -472,9 +584,9 @@ def random_genome(rng):
         rng (np.random.Generator): Random number generator.
     
     Returns:
-        np.ndarray: Binary genome with shape (N_STEPS, 4).
+        int: Bitset genome of N_STEPS * 4 bits.
     """
-    return rng.integers(0, 2, size=(N_STEPS, 4), dtype=np.uint8)
+    return array_to_genome(rng.integers(0, 2, size=(N_STEPS, 4), dtype=np.uint8))
 
 
 def tournament_select(pop, fits, rng):
@@ -482,7 +594,7 @@ def tournament_select(pop, fits, rng):
     Select the fittest individual from a random tournament.
     
     Parameters:
-        pop (list[np.ndarray]): Population of genomes.
+        pop (list[int]): Population of bitset genomes.
         fits (np.ndarray): Fitness scores for the population.
         rng (np.random.Generator): Random number generator.
     
@@ -499,18 +611,19 @@ def crossover(a, b, limit, rng):
     Combine two genomes using one-point crossover.
     
     Parameters:
-        a (np.ndarray): First parent genome.
-        b (np.ndarray): Second parent genome.
+        a (int): First parent bitset genome.
+        b (int): Second parent bitset genome.
         limit (int): Upper bound for the crossover point.
         rng (np.random.Generator): Random number generator.
     
     Returns:
-        np.ndarray: Child genome formed from both parents.
+        int: Child bitset genome formed from both parents.
     """
-    limit = int(np.clip(limit, 2, len(a)))
+    limit = int(np.clip(limit, 2, N_STEPS))
     cut = int(rng.integers(1, limit))
-    child = np.concatenate([a[:cut], b[cut:]], axis=0)
-    return child
+    # steps before the cut come from a, the rest from b
+    low = (1 << (4 * cut)) - 1
+    return (a & low) | (b & ~low)
 
 
 def mutate(g, limit, rng):
@@ -518,15 +631,14 @@ def mutate(g, limit, rng):
     Randomize input steps and flip individual key bits within a limit.
     
     Parameters:
-        g (np.ndarray): Genome to mutate.
+        g (int): Bitset genome to mutate.
         limit (int): Number of initial steps eligible for mutation.
         rng (np.random.Generator): Random number generator.
     
     Returns:
-        np.ndarray: Mutated copy of the genome.
+        int: Mutated bitset genome (integers are immutable, so the input is unchanged).
     """
-    g = g.copy()
-    limit = int(np.clip(limit, 1, len(g)))
+    limit = int(np.clip(limit, 1, N_STEPS))
 
     if rng.random() < 0.8:
         start = max(0, limit - 20)
@@ -535,11 +647,12 @@ def mutate(g, limit, rng):
 
     for i in range(start, limit):
         if rng.random() < MUTATION_RATE:
-            g[i] = rng.integers(0, 2, size=4)
+            bits = rng.integers(0, 2, size=4)
+            g = set_step_keys(g, i, int(bits[0]) | int(bits[1]) << 1 | int(bits[2]) << 2 | int(bits[3]) << 3)
 
         for j in range(4):
             if rng.random() < BIT_FLIP_RATE:
-                g[i, j] ^= 1
+                g ^= 1 << (4 * i + j)
 
     return g
 
@@ -596,7 +709,7 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
         out_dir (str): Folder for this run's genome, history, log and plot files.
     
     Returns:
-        tuple[tuple[float, np.ndarray, dict], list[dict]]: Best fitness/genome/result and per-generation logs.
+        tuple[tuple[float, int, dict], list[dict]]: Best fitness/bitset genome/result and per-generation logs.
     """
     os.makedirs(out_dir, exist_ok=True)
     rng = np.random.default_rng(seed)
@@ -605,10 +718,10 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
     pop = [random_genome(rng) for _ in range(pop_size)]
 
     if WARM_START and os.path.exists(BEST_FILE):
-        best_genome = np.load(BEST_FILE)
+        best_genome = load_genome(BEST_FILE)
 
-        if best_genome.shape == (N_STEPS, 4):
-            pop[0] = best_genome.copy()
+        if best_genome is not None:
+            pop[0] = best_genome
 
             best_result = simulate(best_genome)
 
@@ -643,10 +756,10 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
 
             order = np.argsort(-fits)
             b = int(order[0])
-            history_best.append(pop[b].copy())
+            history_best.append(pop[b])
             if fits[b] > best_ever[0]:
-                best_ever = (float(fits[b]), pop[b].copy(), results[b])
-                np.save(os.path.join(out_dir, os.path.basename(BEST_FILE)), best_ever[1])
+                best_ever = (float(fits[b]), pop[b], results[b])
+                np.save(os.path.join(out_dir, os.path.basename(BEST_FILE)), genome_to_bytes_array(best_ever[1]))
 
             row = {
                 "generation": gen,
@@ -675,14 +788,14 @@ def run_ea(generations=GENERATIONS, pop_size=POP_SIZE, workers=WORKERS, seed=SEE
                       f"| {row['seconds']:5.1f}s{tag}", flush=True)
 
             _write_log(log_rows, os.path.join(out_dir, os.path.basename(LOG_FILE)))
-            np.savez_compressed(os.path.join(out_dir, os.path.basename(HISTORY_FILE)), genomes=np.array(history_best),
+            np.savez_compressed(os.path.join(out_dir, os.path.basename(HISTORY_FILE)), genomes=np.array([genome_to_bytes_array(g) for g in history_best]),
                                 fitness=np.array([r["best_fitness"] for r in log_rows]))
 
             if gen == generations:
                 break
 
             # 3-5. Select, vary, replace (generational with elitism)
-            nxt = [pop[int(i)].copy() for i in order[:ELITES]]
+            nxt = [pop[int(i)] for i in order[:ELITES]]
             n_immigrants = int(round(IMMIGRANT_FRACTION * pop_size))
             while len(nxt) < pop_size - n_immigrants:
                 ia = tournament_select(pop, fits, rng)
@@ -1168,8 +1281,9 @@ def make_viewer_class():
                 return
 
             genome = self.genomes[self.which]
-            step_idx = min(self.tick // TICKS_PER_STEP, len(genome) - 1)
-            self.current_keys = [int(b) for b in genome[step_idx]]
+            step_idx = min(self.tick // TICKS_PER_STEP, N_STEPS - 1)
+            keys = step_keys(genome, step_idx)
+            self.current_keys = [(keys >> j) & 1 for j in range(4)]
             _, _, frame = next(self.simulation)
             result, done = frame
             self.tick += 1
@@ -1214,21 +1328,27 @@ def load_play_genomes():
         None.
     
     Returns:
-        tuple[list[np.ndarray], list[str]]: Saved genomes and their display labels.
+        tuple[list[int], list[str]]: Saved bitset genomes and their display labels.
     """
     genomes, labels = [], []
     if os.path.exists(HISTORY_FILE):
         data = np.load(HISTORY_FILE)
-        for i, g in enumerate(data["genomes"]):
-            genomes.append(g)
-            labels.append(f"generation {i} best (fitness {data['fitness'][i]:.1f})")
+        for i, row in enumerate(data["genomes"]):
+            g = genome_from_saved(row)
+            if g is not None:
+                genomes.append(g)
+                labels.append(f"generation {i} best (fitness {data['fitness'][i]:.1f})")
         # always put the overall best last so the viewer starts on it
         if os.path.exists(BEST_FILE):
-            genomes.append(np.load(BEST_FILE))
-            labels.append("BEST EVER")
+            g = load_genome(BEST_FILE)
+            if g is not None:
+                genomes.append(g)
+                labels.append("BEST EVER")
     elif os.path.exists(BEST_FILE):
-        genomes.append(np.load(BEST_FILE))
-        labels.append("BEST EVER")
+        g = load_genome(BEST_FILE)
+        if g is not None:
+            genomes.append(g)
+            labels.append("BEST EVER")
     return genomes, labels
 
 
